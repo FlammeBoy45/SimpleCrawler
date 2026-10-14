@@ -4,8 +4,8 @@ import urllib.request
 import urllib.error
 from typing import Optional
 
-from sharingan_crawl.configuration import Configuration
-from sharingan_crawl.modeles import PageBrute
+from configuration import Configuration
+from modeles import PageBrute
 
 
 class Telechargeur:

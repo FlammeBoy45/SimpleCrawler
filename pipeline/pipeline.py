@@ -2,7 +2,7 @@
 import sqlite3
 import json
 from abc import ABC, abstractmethod
-from sharingan_crawl.modeles import PageAnalysee
+from modeles import PageAnalysee
 
 
 class InterfacePipeline(ABC):

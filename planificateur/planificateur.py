@@ -4,8 +4,8 @@ from urllib import robotparser
 from typing import Optional
 from collections import deque
 
-from sharingan_crawl.modeles import RequeteURL
-from sharingan_crawl.configuration import Configuration
+from modeles import RequeteURL
+from configuration import Configuration
 
 
 

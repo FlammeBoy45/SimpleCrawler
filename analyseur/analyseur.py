@@ -3,7 +3,7 @@ from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 from typing import List, Tuple
 
-from sharingan_crawl.modeles import PageBrute, PageAnalysee
+from modeles import PageBrute, PageAnalysee
 
 
 class _ExtracteurHTML(HTMLParser):
