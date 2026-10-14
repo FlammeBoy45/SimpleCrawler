@@ -1,0 +1,43 @@
+# 🌀 SharinganCrawl
+
+Crawler web modulaire, léger et performant, écrit en Python 3.11+ en utilisant **uniquement la bibliothèque standard**.
+
+## 📂 Structure du Projet
+
+```text
+SIMPLE_CRAWLER/
+├── sharingan_crawl/
+│   ├── analyseur/       # Analyse HTML et extraction de liens
+│   ├── pipeline/        # Persistance SQLite
+│   ├── planificateur/   # Gestion de la file d'attente des URLs
+│   ├── telechargeur/    # Requêtes HTTP et gestion du réseau
+│   ├── configuration.py # Paramètres globaux du crawler
+│   ├── modeles.py       # Structures de données (dataclasses)
+│   └── orchestrateur.py # Boucle principale du crawler
+├── tests/               # Tests unitaires (pytest)
+├── main.py              # Point d'entrée principal
+└── resultats_crawl.db   # Base de données SQLite générée
+
+⚙️ Prérequis
+
+    Python 3.11 ou supérieur.
+
+    pytest (pour l'exécution des tests unitaires).
+
+🚀 Installation & Utilisation
+
+    Cloner le dépôt ou placer-vous dans le dossier du projet.
+
+    Lancer les tests unitaires pour valider l'environnement :
+    Bash
+
+    python -m pytest
+
+    Lancer le crawler :
+    Bash
+
+    python main.py
+
+🗄️ Stockage
+
+Les résultats du crawl (URLs, titres, dates d'extraction, liens découverts et données) sont automatiquement enregistrés et mis à jour dans une base de données locale SQLite (resultats_crawl.db).
