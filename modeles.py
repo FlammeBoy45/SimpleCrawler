@@ -1,6 +1,6 @@
 # sharingan_crawl/modeles.py
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
 
@@ -28,4 +28,4 @@ class PageAnalysee:
     titre: Optional[str] = None
     donnees: Dict[str, Any] = field(default_factory=dict)
     liens_extraits: List[str] = field(default_factory=list)
-    date_extraction: datetime = field(default_factory=datetime.utcnow)
+    date_extraction: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
