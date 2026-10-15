@@ -1,13 +1,14 @@
 # sharingan_crawl/orchestrateur.py
 import logging
-from  configuration import Configuration
-from  modeles import RequeteURL
-from  planificateur.planificateur import Planificateur
-from  telechargeur.telechargeur import Telechargeur
-from  analyseur.analyseur import Analyseur
-from  pipeline.pipeline import PipelineSQLite
+from configuration import Configuration
+from modeles import RequeteURL
+from planificateur.planificateur import Planificateur
+from telechargeur.telechargeur import Telechargeur
+from analyseur.analyseur import Analyseur
+from pipeline.pipeline import PipelineSQLite
 from datetime import datetime
 import time
+import asyncio
 
 class Orchestrateur:
     def __init__(self, config: Configuration):
@@ -21,12 +22,9 @@ class Orchestrateur:
         for url in config.urls_initiales:
             self.planificateur.ajouter(RequeteURL(url=url, profondeur=0))
 
-
-
-    def executer(self) -> None:
-        print("🌀 Démarrage du SharinganCrawl...")
+    async def executer(self) -> None:
+        print("🌀 Démarrage du SharinganSpider (Mode Asynchrone)...")
         
-        # Enregistrement du début (timestamp et format lisible)
         temps_debut = time.time()
         print(f"⏰ Heure de début : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
@@ -34,14 +32,17 @@ class Orchestrateur:
 
         try:
             while not self.planificateur.est_vide():
+                # Permet de détecter proprement une interruption clavier en async
+                await asyncio.sleep(0)
+                
                 requete = self.planificateur.suivant()
                 if not requete:
                     break
 
                 print(f"📥 Aspiration : {requete.url} (Profondeur: {requete.profondeur})")
                 
-                # 1. Téléchargement
-                page_brute = self.telechargeur.telecharger(requete.url)
+                # 1. Téléchargement asynchrone
+                page_brute = await self.telechargeur.telecharger(requete.url)
                 if page_brute.code_statut != 200 or page_brute.erreur:
                     print(f"⚠️ Erreur {page_brute.code_statut} sur {requete.url} : {page_brute.erreur}")
                     continue
@@ -65,22 +66,19 @@ class Orchestrateur:
 
             print("🔥 Crawl terminé avec succès !")
 
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, asyncio.CancelledError):
             print("\n🛑 Interruption détectée (Ctrl+C). Arrêt en cours...")
 
         finally:
             self.pipeline.fermer()
             
-            # Calcul des statistiques de fin
             temps_fin = time.time()
             duree_totale_sec = temps_fin - temps_debut
             
-            # Conversion propre de la durée en heures, minutes, secondes
             h = int(duree_totale_sec // 3600)
             m = int((duree_totale_sec % 3600) // 60)
             s = int(duree_totale_sec % 60)
             
-            # Calcul de la moyenne par page
             moyenne_sec = (duree_totale_sec / pages_crawlées) if pages_crawlées > 0 else 0
 
             print("\n📊 --- RAPPORT DE CRAWL ---")
