@@ -10,3 +10,4 @@ class Configuration:
     user_agent: str = "SharinganCrawl/1.0 (+https://example.com)"
     urls_initiales: List[str] = field(default_factory=list)
     respecter_robots_txt: bool = True
+    suivre_liens_externes: bool = False

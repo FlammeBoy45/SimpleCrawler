@@ -1,4 +1,3 @@
-# sharingan_crawl/analyseur/analyseur.py
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 from typing import List, Tuple
@@ -21,6 +20,12 @@ class _ExtracteurHTML(HTMLParser):
         elif tag.lower() == "a":
             for nom, valeur in attrs:
                 if nom.lower() == "href" and valeur:
+                    valeur = valeur.strip()
+                    
+                    # Correction pour les liens mal formés du style href="www.domaine.com"
+                    if valeur.startswith("www."):
+                        valeur = "https://" + valeur
+                    
                     url_absolue = urljoin(self.url_base, valeur)
                     self.liens.append(url_absolue)
 
@@ -42,7 +47,7 @@ class Analyseur:
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
             return False
-        
+            
         chemin = parsed.path.lower()
         if any(chemin.endswith(ext) for ext in self.extensions_exclues):
             return False
