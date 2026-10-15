@@ -5,9 +5,20 @@ from typing import List
 
 @dataclass
 class Configuration:
-    delai_aspiration_sec: float = 1.0
-    profondeur_max: int = 3
-    user_agent: str = "SharinganCrawl/1.0 (+https://example.com)"
-    urls_initiales: List[str] = field(default_factory=list)
-    respecter_robots_txt: bool = True
-    suivre_liens_externes: bool = False
+    def __init__(
+        self,
+        urls_initiales=None,
+        profondeur_max=2,
+        respecter_robots_txt=True,
+        user_agent="SharinganSpider/1.0",
+        suivre_liens_externes=False,
+        concurrence_max=5,
+        delai_aspiration_sec=0.5
+    ):
+        self.urls_initiales = urls_initiales or ["https://presidencedufaso.bf/"]
+        self.profondeur_max = profondeur_max
+        self.respecter_robots_txt = respecter_robots_txt
+        self.user_agent = user_agent
+        self.suivre_liens_externes = suivre_liens_externes
+        self.concurrence_max = concurrence_max
+        self.delai_aspiration_sec = delai_aspiration_sec

@@ -13,56 +13,78 @@ import asyncio
 class Orchestrateur:
     def __init__(self, config: Configuration):
         self.config = config
-        self.planificateur = Planificateur(config)
+        db_path = "resultats_crawl.db"
+        
+        self.planificateur = Planificateur(config, db_path=db_path)
         self.telechargeur = Telechargeur(config)
         self.analyseur = Analyseur()
         self.pipeline = PipelineSQLite()
 
-        # Initialisation des URLs de départ
-        for url in config.urls_initiales:
-            self.planificateur.ajouter(RequeteURL(url=url, profondeur=0))
+        # Initialisation si la file est vide au départ
+        if self.planificateur.est_vide():
+            for url in config.urls_initiales:
+                self.planificateur.ajouter(RequeteURL(url=url, profondeur=0))
+
+    async def _traiter_requete(self, requete: RequeteURL, semaphore: asyncio.Semaphore) -> int:
+        """Traite une seule requête HTTP, analyse et sauvegarde avec contrôle de concurrence."""
+        async with semaphore:
+            print(f"📥 Aspiration : {requete.url} (Profondeur: {requete.profondeur})")
+            
+            # 1. Téléchargement asynchrone
+            page_brute = await self.telechargeur.telecharger(requete.url)
+            if page_brute.code_statut != 200 or page_brute.erreur:
+                print(f"⚠️ Erreur {page_brute.code_statut} sur {requete.url} : {page_brute.erreur}")
+                return 0
+
+            # 2. Analyse
+            page_analysee = self.analyseur.analyser(page_brute)
+            print(f"✨ Analysé : {page_analysee.titre or 'Sans titre'} ({len(page_analysee.liens_extraits)} liens trouvés)")
+
+            # 3. Pipeline (Persistance)
+            self.pipeline.sauvegarder(page_analysee)
+
+            # 4. Propagation des nouveaux liens dans le planificateur
+            if requete.profondeur < self.config.profondeur_max:
+                for lien in page_analysee.liens_extraits:
+                    nouvelle_requete = RequeteURL(
+                        url=lien,
+                        profondeur=requete.profondeur + 1
+                    )
+                    self.planificateur.ajouter(nouvelle_requete)
+                    
+            return 1
 
     async def executer(self) -> None:
-        print("🌀 Démarrage du SharinganSpider (Mode Asynchrone)...")
+        print(f"🌀 Démarrage du SharinganSpider (Mode Asynchrone - Concurrence max : {self.config.concurrence_max})...")
         
         temps_debut = time.time()
         print(f"⏰ Heure de début : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         pages_crawlées = 0
+        semaphore = asyncio.Semaphore(self.config.concurrence_max)
 
         try:
             while not self.planificateur.est_vide():
-                # Permet de détecter proprement une interruption clavier en async
                 await asyncio.sleep(0)
                 
-                requete = self.planificateur.suivant()
-                if not requete:
+                # On collecte un batch de requêtes disponibles dans la file
+                taches = []
+                while not self.planificateur.est_vide() and len(taches) < self.config.concurrence_max:
+                    requete = self.planificateur.suivant()
+                    if requete:
+                        taches.append(self._traiter_requete(requete, semaphore))
+
+                if not taches:
                     break
 
-                print(f"📥 Aspiration : {requete.url} (Profondeur: {requete.profondeur})")
+                # Exécution simultanée du batch
+                resultats = await asyncio.gather(*taches, return_exceptions=True)
                 
-                # 1. Téléchargement asynchrone
-                page_brute = await self.telechargeur.telecharger(requete.url)
-                if page_brute.code_statut != 200 or page_brute.erreur:
-                    print(f"⚠️ Erreur {page_brute.code_statut} sur {requete.url} : {page_brute.erreur}")
-                    continue
-
-                # 2. Analyse
-                page_analysee = self.analyseur.analyser(page_brute)
-                print(f"✨ Analysé : {page_analysee.titre or 'Sans titre'} ({len(page_analysee.liens_extraits)} liens trouvés)")
-
-                # 3. Pipeline (Persistance)
-                self.pipeline.sauvegarder(page_analysee)
-                pages_crawlées += 1
-
-                # 4. Propagation des nouveaux liens dans le planificateur
-                if requete.profondeur < self.config.profondeur_max:
-                    for lien in page_analysee.liens_extraits:
-                        nouvelle_requete = RequeteURL(
-                            url=lien,
-                            profondeur=requete.profondeur + 1
-                        )
-                        self.planificateur.ajouter(nouvelle_requete)
+                for res in resultats:
+                    if isinstance(res, int):
+                        pages_crawlées += res
+                    elif isinstance(res, Exception):
+                        print(f"⚠️ Erreur dans une tâche concurrente : {res}")
 
             print("🔥 Crawl terminé avec succès !")
 
