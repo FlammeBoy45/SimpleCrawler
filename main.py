@@ -1,22 +1,46 @@
+
+import argparse
 import asyncio
+import signal
+
 from configuration import Configuration
 from orchestrateur import Orchestrateur
 
+
 def main():
-    # 1. On instancie la configuration avec tes paramètres personnalisés
+    parser = argparse.ArgumentParser(
+        description=(
+            "ALEXIA-BF — Analyse en Ligne et EXploration pour l’Investigation "
+            "et l’Archivage au Burkina Faso"
+        )
+    )
+    parser.add_argument(
+        "url",
+        help="URL de départ du crawl",
+    )
+    args = parser.parse_args()
+
     config = Configuration(
         delai_aspiration_sec=0.5,
         profondeur_max=3,
-        urls_initiales=["https://presidencedufaso.bf/"],
+        urls_initiales=[args.url],
         respecter_robots_txt=False,
-        suivre_liens_externes=False
+        suivre_liens_externes=False,
     )
-    
-    # 2. On initialise l'orchestrateur
+
     orchestrateur = Orchestrateur(config)
-    
-    # 3. On lance la boucle asynchrone pour que le spider s'active !
-    asyncio.run(orchestrateur.executer())
+    gestionnaire_precedent = signal.getsignal(signal.SIGINT)
+    signal.signal(
+        signal.SIGINT,
+        lambda _signum, _frame: orchestrateur.demander_arret(),
+    )
+    try:
+        asyncio.run(orchestrateur.executer())
+    except KeyboardInterrupt:
+        print("\n🛑 Interruption reçue. Arrêt en cours...")
+    finally:
+        signal.signal(signal.SIGINT, gestionnaire_precedent)
+
 
 if __name__ == "__main__":
     main()

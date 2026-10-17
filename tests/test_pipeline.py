@@ -1,7 +1,7 @@
 # tests/test_pipeline.py
 import os
-from sharingan_crawl.modeles import PageAnalysee
-from sharingan_crawl.pipeline.pipeline import PipelineSQLite
+from modeles import PageAnalysee
+from pipeline.pipeline import PipelineSQLite
 
 
 def test_pipeline_sqlite_sauvegarde(tmp_path):

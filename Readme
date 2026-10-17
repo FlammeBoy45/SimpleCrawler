@@ -1,43 +1,52 @@
-# 🌀 SharinganCrawl
+# ALEXIA-BF
 
-Crawler web modulaire, léger et performant, écrit en Python 3.11+ en utilisant **uniquement la bibliothèque standard**.
+**Analyse en Ligne et EXploration pour l’Investigation et l’Archivage au Burkina Faso**
 
-## 📂 Structure du Projet
+Outil modulaire d’exploration et d’archivage de pages web, écrit en Python 3.11 ou supérieur.
+
+## Structure du projet
 
 ```text
-SIMPLE_CRAWLER/
-├── sharingan_crawl/
-│   ├── analyseur/       # Analyse HTML et extraction de liens
-│   ├── pipeline/        # Persistance SQLite
-│   ├── planificateur/   # Gestion de la file d'attente des URLs
-│   ├── telechargeur/    # Requêtes HTTP et gestion du réseau
-│   ├── configuration.py # Paramètres globaux du crawler
-│   ├── modeles.py       # Structures de données (dataclasses)
-│   └── orchestrateur.py # Boucle principale du crawler
-├── tests/               # Tests unitaires (pytest)
-├── main.py              # Point d'entrée principal
-└── resultats_crawl.db   # Base de données SQLite générée
+├── analyseur/       # Analyse HTML et extraction de liens
+├── pipeline/        # Persistance SQLite
+├── planificateur/   # Gestion de la file d'attente des URLs
+├── telechargeur/    # Requêtes HTTP et gestion du réseau
+├── tests/           # Tests unitaires
+├── configuration.py # Paramètres globaux
+├── modeles.py       # Structures de données
+├── orchestrateur.py # Boucle principale
+└── main.py          # Point d'entrée
+```
 
-⚙️ Prérequis
+## Installation
 
-    Python 3.11 ou supérieur.
+Python 3.11 ou supérieur est requis. Installez la dépendance HTTP :
 
-    pytest (pour l'exécution des tests unitaires).
+```bash
+python -m pip install httpx
+```
 
-🚀 Installation & Utilisation
+Pour exécuter les tests, installez également pytest :
 
-    Cloner le dépôt ou placer-vous dans le dossier du projet.
+```bash
+python -m pip install pytest
+python -m pytest
+```
 
-    Lancer les tests unitaires pour valider l'environnement :
-    Bash
+## Utilisation
 
-    python -m pytest
+Lancez ALEXIA-BF en donnant une URL de départ :
 
-    Lancer le crawler :
-    Bash
+```bash
+python main.py https://example.com/
+```
 
-    python main.py
+Le programme respecte la configuration du crawl et enregistre localement les URLs,
+titres, dates d’extraction, liens découverts et données dans `resultats_crawl.db`
+(SQLite).
 
-🗄️ Stockage
+## Arrêt du crawl
 
-Les résultats du crawl (URLs, titres, dates d'extraction, liens découverts et données) sont automatiquement enregistrés et mis à jour dans une base de données locale SQLite (resultats_crawl.db).
+Appuyez sur `Ctrl+C` pour demander un arrêt propre. ALEXIA-BF termine le lot de
+requêtes en cours, conserve les résultats enregistrés et affiche les métriques
+avant de quitter. Les signaux `Ctrl+C` répétés ne coupent pas l’écriture SQLite.

@@ -1,4 +1,4 @@
-# sharingan_crawl/pipeline/pipeline.py
+# pipeline/pipeline.py
 import sqlite3
 import json
 from abc import ABC, abstractmethod

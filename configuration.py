@@ -1,4 +1,4 @@
-# sharingan_crawl/configuration.py
+# configuration.py
 from dataclasses import dataclass, field
 from typing import List
 
@@ -10,12 +10,12 @@ class Configuration:
         urls_initiales=None,
         profondeur_max=2,
         respecter_robots_txt=True,
-        user_agent="SharinganSpider/1.0",
+        user_agent="ALEXIA-BF/1.0",
         suivre_liens_externes=False,
         concurrence_max=5,
         delai_aspiration_sec=0.5
     ):
-        self.urls_initiales = urls_initiales or ["https://presidencedufaso.bf/"]
+        self.urls_initiales = urls_initiales or []
         self.profondeur_max = profondeur_max
         self.respecter_robots_txt = respecter_robots_txt
         self.user_agent = user_agent

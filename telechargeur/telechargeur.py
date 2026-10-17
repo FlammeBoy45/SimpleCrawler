@@ -1,4 +1,4 @@
-# sharingan_crawl/telechargeur/telechargeur.py
+# telechargeur/telechargeur.py
 import time
 import urllib.request
 import urllib.error

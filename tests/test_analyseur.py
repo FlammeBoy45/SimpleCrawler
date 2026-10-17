@@ -1,6 +1,6 @@
 # tests/test_analyseur.py
-from sharingan_crawl.modeles import PageBrute
-from sharingan_crawl.analyseur.analyseur import Analyseur
+from modeles import PageBrute
+from analyseur.analyseur import Analyseur
 
 
 def test_analyseur_extraction_titre_et_liens():

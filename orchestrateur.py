@@ -1,4 +1,4 @@
-# sharingan_crawl/orchestrateur.py
+# orchestrateur.py
 import logging
 from configuration import Configuration
 from modeles import RequeteURL
@@ -9,6 +9,7 @@ from pipeline.pipeline import PipelineSQLite
 from datetime import datetime
 import time
 import asyncio
+import threading
 
 class Orchestrateur:
     def __init__(self, config: Configuration):
@@ -19,6 +20,7 @@ class Orchestrateur:
         self.telechargeur = Telechargeur(config)
         self.analyseur = Analyseur()
         self.pipeline = PipelineSQLite()
+        self._arret_demande = threading.Event()
 
         # Initialisation si la file est vide au départ
         if self.planificateur.est_vide():
@@ -51,11 +53,16 @@ class Orchestrateur:
                         profondeur=requete.profondeur + 1
                     )
                     self.planificateur.ajouter(nouvelle_requete)
+                    if self._arret_demande.is_set():
+                        break
                     
             return 1
 
+    def demander_arret(self) -> None:
+        self._arret_demande.set()
+
     async def executer(self) -> None:
-        print(f"🌀 Démarrage du SharinganSpider (Mode Asynchrone - Concurrence max : {self.config.concurrence_max})...")
+        print(f"🌀 Démarrage d’ALEXIA-BF (mode asynchrone - concurrence max : {self.config.concurrence_max})...")
         
         temps_debut = time.time()
         print(f"⏰ Heure de début : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -64,12 +71,19 @@ class Orchestrateur:
         semaphore = asyncio.Semaphore(self.config.concurrence_max)
 
         try:
-            while not self.planificateur.est_vide():
+            while (
+                not self.planificateur.est_vide()
+                and not self._arret_demande.is_set()
+            ):
                 await asyncio.sleep(0)
                 
                 # On collecte un batch de requêtes disponibles dans la file
                 taches = []
-                while not self.planificateur.est_vide() and len(taches) < self.config.concurrence_max:
+                while (
+                    not self.planificateur.est_vide()
+                    and len(taches) < self.config.concurrence_max
+                    and not self._arret_demande.is_set()
+                ):
                     requete = self.planificateur.suivant()
                     if requete:
                         taches.append(self._traiter_requete(requete, semaphore))
@@ -86,26 +100,29 @@ class Orchestrateur:
                     elif isinstance(res, Exception):
                         print(f"⚠️ Erreur dans une tâche concurrente : {res}")
 
-            print("🔥 Crawl terminé avec succès !")
-
-        except (KeyboardInterrupt, asyncio.CancelledError):
-            print("\n🛑 Interruption détectée (Ctrl+C). Arrêt en cours...")
+            if self._arret_demande.is_set():
+                print("\n🛑 Arrêt demandé (Ctrl+C). Crawl interrompu proprement.")
+            else:
+                print("🔥 Crawl terminé avec succès !")
 
         finally:
-            self.pipeline.fermer()
-            
-            temps_fin = time.time()
-            duree_totale_sec = temps_fin - temps_debut
-            
-            h = int(duree_totale_sec // 3600)
-            m = int((duree_totale_sec % 3600) // 60)
-            s = int(duree_totale_sec % 60)
-            
-            moyenne_sec = (duree_totale_sec / pages_crawlées) if pages_crawlées > 0 else 0
+            try:
+                self.pipeline.fermer()
+            finally:
+                temps_fin = time.time()
+                duree_totale_sec = temps_fin - temps_debut
 
-            print("\n📊 --- RAPPORT DE CRAWL ---")
-            print(f"📄 Pages crawlées : {pages_crawlées}")
-            print(f"⏱️ Durée totale    : {h}h {m}m {s}s")
-            print(f"⚡ Moyenne par page : {moyenne_sec:.2f} secondes")
-            print(f"⏰ Heure de fin     : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            print("--------------------------")
+                h = int(duree_totale_sec // 3600)
+                m = int((duree_totale_sec % 3600) // 60)
+                s = int(duree_totale_sec % 60)
+
+                moyenne_sec = (
+                    duree_totale_sec / pages_crawlées if pages_crawlées > 0 else 0
+                )
+
+                print("\n📊 --- RAPPORT DE CRAWL ---")
+                print(f"📄 Pages crawlées : {pages_crawlées}")
+                print(f"⏱️ Durée totale    : {h}h {m}m {s}s")
+                print(f"⚡ Moyenne par page : {moyenne_sec:.2f} secondes")
+                print(f"⏰ Heure de fin     : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                print("--------------------------")

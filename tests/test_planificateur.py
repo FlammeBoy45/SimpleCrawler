@@ -1,12 +1,16 @@
 # tests/test_planificateur.py
-from sharingan_crawl.modeles import RequeteURL
-from sharingan_crawl.configuration import Configuration
-from sharingan_crawl.planificateur.planificateur import Planificateur
+from modeles import RequeteURL
+from configuration import Configuration
+from planificateur.planificateur import Planificateur
 
 
-def test_planificateur_ajout_et_recuperation():
-    config = Configuration(profondeur_max=2, respecter_robots_txt=False)
-    planificateur = Planificateur(config)
+def test_planificateur_ajout_et_recuperation(tmp_path):
+    config = Configuration(
+        urls_initiales=["https://example.com/"],
+        profondeur_max=2,
+        respecter_robots_txt=False,
+    )
+    planificateur = Planificateur(config, db_path=str(tmp_path / "test.db"))
 
     req = RequeteURL(url="https://example.com/page1", profondeur=0)
     assert planificateur.ajouter(req) is True
@@ -20,9 +24,9 @@ def test_planificateur_ajout_et_recuperation():
     assert planificateur.est_vide() is True
 
 
-def test_planificateur_profondeur_max():
+def test_planificateur_profondeur_max(tmp_path):
     config = Configuration(profondeur_max=1, respecter_robots_txt=False)
-    planificateur = Planificateur(config)
+    planificateur = Planificateur(config, db_path=str(tmp_path / "test.db"))
 
     req = RequeteURL(url="https://example.com/loin", profondeur=2)
     assert planificateur.ajouter(req) is False
