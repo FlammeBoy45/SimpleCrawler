@@ -1,168 +1,175 @@
-from urllib.parse import urlparse
-from urllib import robotparser
-from typing import Optional
-from collections import deque
-import sqlite3
+import logging
 import os
+import sqlite3
+from collections import deque
+from typing import Optional
 
-from modeles import RequeteURL
 from configuration import Configuration
+from modeles import RequeteURL
+from outils_url import cle_deduplication, domaine_de
+
+logger = logging.getLogger(__name__)
 
 
 class Planificateur:
-    def __init__(self, config: Configuration, db_path: str = "resultats_crawl.db"):
+    """File d'attente d'URL à crawler, persistante.
+
+    Le contrôle de robots.txt n'est pas fait ici (il demande du réseau) : voir
+    `robots.GestionnaireRobots`, appelé par l'orchestrateur au moment du
+    téléchargement. `ajouter()` est donc rapide et sans réseau.
+
+    Persistance : la table `file_attente` vit dans une base *séparée* de la base
+    de résultats (voir `chemin_etat`), pour ne jamais se disputer le verrou
+    d'écriture SQLite avec le pipeline. Les pages déjà crawlées sont lues dans
+    la table `pages` de la base de résultats (lecture seule).
+
+    Reprise après interruption : une URL n'est PAS retirée de `file_attente`
+    quand `suivant()` la rend ; elle est nettoyée au prochain démarrage si sa
+    page a bien été enregistrée dans `pages`. Ainsi, une URL en cours de
+    traitement au moment d'un crash est reprise au lieu d'être perdue.
+
+    Non thread-safe : à appeler depuis la boucle principale.
+    """
+
+    def __init__(
+        self,
+        config: Configuration,
+        db_path: str = "resultats_crawl.db",
+        chemin_etat: Optional[str] = None,
+    ):
         self.config = config
         self.db_path = db_path
+        if chemin_etat is None:
+            chemin_etat = (
+                ":memory:"
+                if db_path == ":memory:"
+                else os.path.splitext(db_path)[0] + "_etat.db"
+            )
+        self.chemin_etat = chemin_etat
+
         self.file_attente: deque[RequeteURL] = deque()
         self.urls_vues: set[str] = set()
-        self.analyseurs_robots: dict[str, robotparser.RobotFileParser] = {}
-        
+
         self.domaines_autorises: set[str] = {
-            urlparse(url).netloc for url in self.config.urls_initiales
+            d for d in (domaine_de(u) for u in config.urls_initiales) if d
         }
 
-        # Initialiser les tables SQLite nécessaires si elles n'existent pas
-        self._initialiser_base()
-
-        # Charger l'état persistant (urls vues + file d'attente en suspens)
+        self._conn = self._ouvrir_etat()
         self._charger_etat_persistant()
 
-    def _initialiser_base(self) -> None:
-        """Crée la table de la file d'attente persistante si elle n'existe pas."""
+    # ------------------------------------------------------------------ #
+    # Persistance
+    # ------------------------------------------------------------------ #
+    def _ouvrir_etat(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.chemin_etat)
+        # WAL + synchronous=NORMAL : un commit par opération reste peu coûteux
+        # et protège contre un crash du processus.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS file_attente (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT UNIQUE NOT NULL,
+                profondeur INTEGER NOT NULL
+            )
+        """)
+        conn.commit()
+        return conn
+
+    def _lire_urls_crawlees(self) -> list[str]:
+        """URL déjà enregistrées par le pipeline (lecture seule)."""
+        if self.db_path == ":memory:" or not os.path.exists(self.db_path):
+            return []
+        conn = sqlite3.connect(self.db_path)
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS file_attente (
-                    url TEXT PRIMARY KEY,
-                    profondeur INTEGER
-                )
-            """)
-            conn.commit()
+            existe = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='pages'"
+            ).fetchone()
+            if not existe:
+                return []
+            return [ligne[0] for ligne in conn.execute("SELECT url FROM pages")]
+        finally:
             conn.close()
-        except Exception as e:
-            print(f"⚠️ [Planificateur] Erreur lors de l'initialisation de la table file_attente : {e}")
-
-    def _normaliser_domaine(self, netloc: str) -> str:
-        netloc = netloc.lower()
-        if netloc.startswith("www."):
-            return netloc[4:]
-        return netloc
-
-    def _normaliser_url(self, url: str) -> str:
-        parsed = urlparse(url)
-        netloc = self._normaliser_domaine(parsed.netloc)
-        return parsed._replace(netloc=netloc).geturl()
 
     def _charger_etat_persistant(self) -> None:
-        """Charge les URLs vues depuis 'pages' et la file d'attente depuis 'file_attente'."""
-        if not os.path.exists(self.db_path):
-            return
-            
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # 1. Charger les pages déjà crawlées (vues)
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pages';")
-            if cursor.fetchone():
-                cursor.execute("SELECT url FROM pages;")
-                for row in cursor.fetchall():
-                    self.urls_vues.add(self._normaliser_url(row[0]))
-            
-            # 2. Charger la file d'attente en suspens
-            cursor.execute("SELECT url, profondeur FROM file_attente;")
-            lignes_file = cursor.fetchall()
-            
-            for url, profondeur in lignes_file:
-                url_norm = self._normaliser_url(url)
-                if url_norm not in self.urls_vues:
-                    self.file_attente.append(RequeteURL(url=url, profondeur=profondeur))
-                    self.urls_vues.add(url_norm)
+        for url in self._lire_urls_crawlees():
+            cle = cle_deduplication(url)
+            if cle:
+                self.urls_vues.add(cle)
+        nb_crawlees = len(self.urls_vues)
 
-            print(f"📦 [Planificateur] Chargé depuis SQLite : {len(self.urls_vues)} URLs connues, {len(self.file_attente)} en attente dans la file.")
-            conn.close()
-        except Exception as e:
-            print(f"⚠️ [Planificateur] Impossible de charger l'état persistant : {e}")
+        a_nettoyer: list[tuple[str]] = []
+        lignes = self._conn.execute(
+            "SELECT url, profondeur FROM file_attente ORDER BY id"
+        ).fetchall()
+        for url, profondeur in lignes:
+            cle = cle_deduplication(url)
+            if cle is None or cle in self.urls_vues:
+                a_nettoyer.append((url,))  # déjà crawlée (ou doublon/invalide)
+            else:
+                self.urls_vues.add(cle)
+                self.file_attente.append(RequeteURL(url=url, profondeur=profondeur))
 
-    def _sauvegarder_dans_file_sqlite(self, url: str, profondeur: int) -> None:
-        """Ajoute une URL dans la file d'attente persistante SQLite."""
+        if a_nettoyer:
+            self._conn.executemany("DELETE FROM file_attente WHERE url = ?", a_nettoyer)
+            self._conn.commit()
+
+        logger.info(
+            "Planificateur : %d pages déjà crawlées, %d URL reprises dans la file.",
+            nb_crawlees,
+            len(self.file_attente),
+        )
+
+    def _persister(self, requete: RequeteURL) -> None:
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute("INSERT OR IGNORE INTO file_attente (url, profondeur) VALUES (?, ?)", (url, profondeur))
-            conn.commit()
-            conn.close()
-        except Exception:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO file_attente (url, profondeur) VALUES (?, ?)",
+                (requete.url, requete.profondeur),
+            )
+            self._conn.commit()
+        except sqlite3.Error:
+            # Le crawl continue, mais cette URL ne survivrait pas à un redémarrage.
+            logger.exception("Persistance impossible pour %s", requete.url)
+
+    def fermer(self) -> None:
+        try:
+            self._conn.close()
+        except sqlite3.Error:
             pass
 
-    def _retirer_de_file_sqlite(self, url: str) -> None:
-        """Retire une URL de la file persistante SQLite une fois consommée."""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM file_attente WHERE url = ?", (url,))
-            conn.commit()
-            conn.close()
-        except Exception:
-            pass
+    def __enter__(self):
+        return self
 
-    def _obtenir_robots(self, url: str) -> Optional[robotparser.RobotFileParser]:
-        parsed = urlparse(url)
-        domaine = f"{parsed.scheme}://{parsed.netloc}"
-        
-        if domaine not in self.analyseurs_robots:
-            rp = robotparser.RobotFileParser()
-            rp.set_url(f"{domaine}/robots.txt")
-            try:
-                rp.read()
-            except Exception:
-                rp = None
-            self.analyseurs_robots[domaine] = rp
-            
-        return self.analyseurs_robots[domaine]
+    def __exit__(self, *_exc) -> None:
+        self.fermer()
 
-    def est_autorise(self, url: str) -> bool:
-        if not self.config.respecter_robots_txt:
-            return True
-        rp = self._obtenir_robots(url)
-        return rp.can_fetch(self.config.user_agent, url) if rp else True
-
+    # ------------------------------------------------------------------ #
+    # API publique
+    # ------------------------------------------------------------------ #
     def est_interne_ou_autorise(self, url: str) -> bool:
         if self.config.suivre_liens_externes:
             return True
-        parsed_url = urlparse(url)
-        domaine_lien = self._normaliser_domaine(parsed_url.netloc)
-        domaines_base_normalises = {self._normaliser_domaine(d) for d in self.domaines_autorises}
-        return domaine_lien in domaines_base_normalises
+        return domaine_de(url) in self.domaines_autorises
 
     def ajouter(self, requete: RequeteURL) -> bool:
-        url_normalisee = self._normaliser_url(requete.url)
-        
-        if url_normalisee in self.urls_vues:
+        cle = cle_deduplication(requete.url)
+        if cle is None or cle in self.urls_vues:
             return False
         if requete.profondeur > self.config.profondeur_max:
             return False
         if not self.est_interne_ou_autorise(requete.url):
             return False
-        if not self.est_autorise(requete.url):
-            return False
-            
-        self.urls_vues.add(url_normalisee)
+
+        self.urls_vues.add(cle)
         self.file_attente.append(requete)
-        
-        # Persistance immédiate dans SQLite
-        self._sauvegarder_dans_file_sqlite(requete.url, requete.profondeur)
+        self._persister(requete)
         return True
 
     def suivant(self) -> Optional[RequeteURL]:
         if not self.file_attente:
             return None
-        requete = self.file_attente.popleft()
-        
-        # On la retire de la file persistante puisqu'elle va être traitée
-        self._retirer_de_file_sqlite(requete.url)
-        return requete
+        # Volontairement, pas de suppression en base ici (voir la docstring).
+        return self.file_attente.popleft()
 
     def est_vide(self) -> bool:
         return len(self.file_attente) == 0

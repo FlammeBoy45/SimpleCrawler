@@ -1,4 +1,5 @@
 # modeles.py
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
@@ -20,6 +21,8 @@ class PageBrute:
     en_tete: Dict[str, str] = field(default_factory=dict)
     temps_reponse_ms: float = 0.0
     erreur: Optional[str] = None
+    # URL réellement servie après redirections (None si inconnue).
+    url_finale: Optional[str] = None
 
 
 @dataclass
