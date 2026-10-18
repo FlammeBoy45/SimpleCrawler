@@ -9,6 +9,7 @@ import sys
 
 from configuration import Configuration
 from orchestrateur import Orchestrateur
+from planificateur.planificateur import Planificateur
 
 
 def _configurer_logs(verbeux: bool) -> None:
@@ -47,7 +48,7 @@ def main() -> None:
             "et l’Archivage au Burkina Faso"
         )
     )
-    parser.add_argument("url", help="URL de départ du crawl")
+    parser.add_argument("url", nargs="?", help="URL de départ du crawl")
     parser.add_argument("--profondeur", type=int, default=3, help="profondeur maximale (défaut : 3)")
     parser.add_argument("--concurrence", type=int, default=5, help="téléchargements simultanés (défaut : 5)")
     parser.add_argument("--delai", type=float, default=0.5,
@@ -68,7 +69,7 @@ def main() -> None:
         print(f"🧹 Résultats et état précédents supprimés ({args.db}).")
 
     config = Configuration(
-        urls_initiales=[args.url],
+        urls_initiales=[args.url] if args.url else [],
         profondeur_max=args.profondeur,
         respecter_robots_txt=not args.ignorer_robots,
         suivre_liens_externes=args.externes,
@@ -76,6 +77,18 @@ def main() -> None:
         delai_aspiration_sec=args.delai,
         chemin_db=args.db,
     )
+
+    if not args.url:
+        planificateur = Planificateur(config, db_path=args.db)
+        try:
+            if planificateur.est_vide():
+                print(
+                    "Aucune URL en attente dans la file. "
+                    "Veuillez ajouter une URL de départ."
+                )
+                return
+        finally:
+            planificateur.fermer()
 
     orchestrateur = Orchestrateur(config)
 

@@ -31,3 +31,20 @@ def test_planificateur_profondeur_max(tmp_path):
     req = RequeteURL(url="https://example.com/loin", profondeur=2)
     assert planificateur.ajouter(req) is False
     assert planificateur.est_vide() is True
+
+
+def test_reprise_sans_url_autorise_les_liens_du_domaine_en_file(tmp_path):
+    chemin_db = str(tmp_path / "test.db")
+    config_initiale = Configuration(urls_initiales=["https://example.com/"])
+    planificateur = Planificateur(config_initiale, db_path=chemin_db)
+    assert planificateur.ajouter(
+        RequeteURL(url="https://example.com/page1", profondeur=1)
+    )
+    planificateur.fermer()
+
+    reprise = Planificateur(Configuration(), db_path=chemin_db)
+
+    assert reprise.ajouter(
+        RequeteURL(url="https://example.com/page2", profondeur=2)
+    )
+    reprise.fermer()

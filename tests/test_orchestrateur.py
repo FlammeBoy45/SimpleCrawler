@@ -101,3 +101,54 @@ def test_main_intercepte_plusieurs_sigint_sans_exception(monkeypatch):
     application.main()
 
     assert FauxOrchestrateur.instance.arrets_demandes == 2
+
+
+def test_main_sans_url_signale_file_vide_et_ne_demarre_pas(
+    monkeypatch, capsys, tmp_path
+):
+    def orchestrateur_inattendu(_config):
+        raise AssertionError("ne doit pas démarrer")
+
+    monkeypatch.setattr("sys.argv", ["main.py", "--db", str(tmp_path / "test.db")])
+    monkeypatch.setattr(
+        application, "Orchestrateur", orchestrateur_inattendu
+    )
+
+    application.main()
+
+    sortie = capsys.readouterr().out
+    assert "Aucune URL en attente dans la file" in sortie
+    assert "Veuillez ajouter une URL de départ" in sortie
+
+
+def test_main_sans_url_reprend_la_file_persistante(monkeypatch, tmp_path):
+    from configuration import Configuration
+    from modeles import RequeteURL
+    from planificateur.planificateur import Planificateur
+
+    chemin_db = str(tmp_path / "test.db")
+    planificateur = Planificateur(
+        Configuration(urls_initiales=["https://example.com/"]),
+        db_path=chemin_db,
+    )
+    planificateur.ajouter(
+        RequeteURL(url="https://example.com/page1", profondeur=1)
+    )
+    planificateur.fermer()
+
+    class FauxOrchestrateur:
+        config = None
+
+        def __init__(self, config):
+            FauxOrchestrateur.config = config
+
+        async def executer(self):
+            pass
+
+    monkeypatch.setattr(application, "Orchestrateur", FauxOrchestrateur)
+    monkeypatch.setattr("sys.argv", ["main.py", "--db", chemin_db])
+    monkeypatch.setattr(application.asyncio, "run", lambda coroutine: coroutine.close())
+
+    application.main()
+
+    assert FauxOrchestrateur.config.urls_initiales == []

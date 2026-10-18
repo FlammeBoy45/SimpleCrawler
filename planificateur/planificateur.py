@@ -109,6 +109,10 @@ class Planificateur:
             else:
                 self.urls_vues.add(cle)
                 self.file_attente.append(RequeteURL(url=url, profondeur=profondeur))
+                if not self.config.urls_initiales:
+                    domaine = domaine_de(url)
+                    if domaine:
+                        self.domaines_autorises.add(domaine)
 
         if a_nettoyer:
             self._conn.executemany("DELETE FROM file_attente WHERE url = ?", a_nettoyer)

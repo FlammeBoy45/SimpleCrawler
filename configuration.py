@@ -9,7 +9,7 @@ class Configuration:
     # Mêmes noms et même ordre qu'avant : les appels existants restent valides.
     urls_initiales: Optional[List[str]] = field(default_factory=list)
     profondeur_max: int = 2
-    respecter_robots_txt: bool = True
+    respecter_robots_txt: bool = False
     user_agent: str = "ALEXIA-BF/1.0"
     suivre_liens_externes: bool = False
     concurrence_max: int = 5

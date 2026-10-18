@@ -43,7 +43,7 @@ py -m pip install pytest
 À la racine du projet, indiquez l’URL de départ :
 
 ```powershell
-py .\main.py https://gouvernement.gov.bf/
+py .\main.py https://example.bf/
 ```
 
 L’aide de la commande est disponible avec :
