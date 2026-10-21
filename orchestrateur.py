@@ -151,11 +151,12 @@ class Orchestrateur:
             page_analysee.titre or "Sans titre", len(page_analysee.liens_extraits),
         )
 
-        # 5. Nouveaux liens d'abord, enregistrement de la page ensuite : si le
-        #    programme s'arrête entre les deux, la page sera simplement reprise
-        #    (les liens déjà connus sont dédupliqués) au lieu de perdre ses liens.
+        # 5. Propager les liens avant d'enregistrer la page, sauf si un arrêt
+        #    est demandé ; la page traitée est toujours enregistrée.
         if requete.profondeur < self.config.profondeur_max:
             for lien in page_analysee.liens_extraits:
+                if self._arret_demande.is_set():
+                    break
                 self.planificateur.ajouter(
                     RequeteURL(url=lien, profondeur=requete.profondeur + 1)
                 )
